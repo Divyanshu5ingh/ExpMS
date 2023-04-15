@@ -1,6 +1,4 @@
-﻿using SendGrid;
-using SendGrid.Helpers.Mail;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,38 +7,84 @@ using Volo.Abp.Application.Services;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Identity;
 using Volo.Abp.Domain.Entities;
+using Volo.Abp.DependencyInjection;
+using Volo.Abp.Emailing;
+using Volo.Abp.Emailing.Templates;
+using Volo.Abp.TextTemplating;
 using System.Net.Mail;
 
 namespace EMS.Users
 {
-    public class UserAppService : ApplicationService, IUserAppService
+    public interface IUserAppService
+    {
+        Task<bool> CheckEmailExists(string email);
+    }
+
+    public class UserAppService : ApplicationService, IUserAppService, ITransientDependency
     {
         private readonly IIdentityUserRepository _userRepository;
-        private readonly ISendGridClient _sendGridClient;
-        private readonly string _fromEmail;
+        private readonly IEmailSender _emailSender;
+        private readonly ITemplateRenderer _templateRenderer;
 
-        public UserAppService(IIdentityUserRepository userRepository, ISendGridClient sendGridClient, string fromEmail)
+        public UserAppService(IIdentityUserRepository userRepository, IEmailSender emailSender, ITemplateRenderer templateRenderer)
         {
             _userRepository = userRepository;
-            _sendGridClient = sendGridClient;
-            _fromEmail = fromEmail;
+            _emailSender = emailSender;
+            _templateRenderer = templateRenderer;
         }
 
         public async Task<bool> CheckEmailExists(string email)
         {
             var users = await _userRepository.GetListAsync();
             bool emailExists = users.Any(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+
             if (!emailExists)
             {
-                var message = new SendGridMessage();
-                message.SetFrom(new EmailAddress(_fromEmail));
-                message.AddTo(new EmailAddress(email));
-                message.SetSubject("Welcome to My Website");
-                message.AddContent(MimeType.Text, "Thank you for joining our website!");
-
-                var response = await _sendGridClient.SendEmailAsync(message);
+                await SendEmailAsync(email);
             }
+            //else
+            //{
+            //    await SendSuspiciousLoginDetectedEmailAsync(email);
+            //}
+
             return emailExists;
         }
+
+        private async Task SendEmailAsync(string targetEmail)
+        {
+            var mailMessage = new MailMessage();
+            mailMessage.To.Add(targetEmail);
+            mailMessage.From = new MailAddress("test1403email@gmail.com");
+            mailMessage.Subject = "Join Splitwise";
+            mailMessage.Body = "Please join to Splitwise using this link https://secure.splitwise.com/login";
+
+            using (var smtpClient = new SmtpClient("smtp.gmail.com"))
+            {
+                smtpClient.Port = 587;
+                smtpClient.UseDefaultCredentials = true;
+                smtpClient.Credentials = new System.Net.NetworkCredential("test1403email@gmail.com", "GOOGLE@d1403kr");
+                smtpClient.EnableSsl = true;
+
+                await smtpClient.SendMailAsync(mailMessage);
+            }
+        }
+        //private async Task SendSuspiciousLoginDetectedEmailAsync(string targetEmail)
+        //{
+        //    var mailMessage = new MailMessage();
+        //    mailMessage.To.Add(targetEmail);
+        //    mailMessage.From = new MailAddress("test1403email@gmail.com");
+        //    mailMessage.Subject = "Suspicious login detected";
+        //    mailMessage.Body = "We have detected a suspicious login attempt on your account. Please change your password immediately.";
+
+        //    using (var smtpClient = new SmtpClient("smtp.gmail.com"))
+        //    {
+        //        smtpClient.Port = 587;
+        //        smtpClient.UseDefaultCredentials = true;
+        //        smtpClient.Credentials = new System.Net.NetworkCredential("test1403email@gmail.com", "GOOGLE@d1403kr");
+        //        smtpClient.EnableSsl = true;
+
+        //        await smtpClient.SendMailAsync(mailMessage);
+        //    }
+        //}
     }
 }
